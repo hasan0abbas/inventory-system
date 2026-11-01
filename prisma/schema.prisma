@@ -1,0 +1,145 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  Admin
+  WarehouseManager
+  StockKeeper
+}
+
+enum WarehouseType {
+  Cold
+  Chilled
+  Dry
+}
+
+enum MovementType {
+  Incoming
+  Relocation
+  Outgoing
+}
+
+enum LocationStatus {
+  Empty
+  Occupied
+  Maintenance
+}
+
+enum PalletSlot {
+  A
+  B
+}
+
+model User {
+  id             String          @id @default(uuid()) @db.Uuid
+  username       String
+  email          String          @unique
+  passwordHash   String          @map("password_hash")
+  role           UserRole
+  createdAt      DateTime        @default(now()) @map("created_at")
+  stockMovements StockMovement[]
+
+  @@map("User")
+}
+
+model Warehouse {
+  id          String        @id @default(uuid()) @db.Uuid
+  code        String        @unique
+  name        String
+  type        WarehouseType
+  address     String?
+  description String?       @db.Text
+  createdAt   DateTime      @default(now()) @map("created_at")
+  locations   Location[]
+
+  @@map("Warehouse")
+}
+
+model Product {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String
+  brand          String?
+  quantityPerBox Int      @map("quantity_per_box")
+  unitMass       Decimal? @map("unit_mass")
+  boxesPerPallet Int      @map("boxes_per_pallet")
+  createdAt      DateTime @default(now()) @map("created_at")
+  batches        Batch[]
+
+  @@map("Product")
+}
+
+model Batch {
+  id             String          @id @default(uuid()) @db.Uuid
+  productId      String          @map("product_id") @db.Uuid
+  batchNumber    String          @unique @map("batch_number")
+  description    String?         @db.Text
+  productionDate DateTime        @map("production_date") @db.Date
+  expiryDate     DateTime        @map("expiry_date") @db.Date
+  arrivalDate    DateTime        @map("arrival_date") @db.Date
+  createdAt      DateTime        @default(now()) @map("created_at")
+  product        Product         @relation(fields: [productId], references: [id])
+  batchLocations BatchLocation[]
+  stockMovements StockMovement[]
+
+  @@map("Batch")
+}
+
+model Location {
+  id             String          @id @default(uuid()) @db.Uuid
+  warehouseId    String          @map("warehouse_id") @db.Uuid
+  roomNumber     Int             @map("room_number")
+  rack           String
+  level          Int
+  pallet         String
+  status         LocationStatus
+  warehouse      Warehouse       @relation(fields: [warehouseId], references: [id])
+  batchLocations BatchLocation[]
+  movementsFrom  StockMovement[] @relation("MovementFromLocation")
+  movementsTo    StockMovement[] @relation("MovementToLocation")
+
+  @@unique([warehouseId, roomNumber, rack, level, pallet])
+  @@map("Location")
+}
+
+model BatchLocation {
+  id                String     @id @default(uuid()) @db.Uuid
+  batchId           String     @map("batch_id") @db.Uuid
+  locationId        String     @map("location_id") @db.Uuid
+  slot              PalletSlot
+  allocatedQuantity Int        @map("allocated_quantity")
+  assignedAt        DateTime   @default(now()) @map("assigned_at")
+  batch             Batch      @relation(fields: [batchId], references: [id])
+  location          Location   @relation(fields: [locationId], references: [id])
+
+  @@unique([locationId, slot])
+  @@map("BatchLocation")
+}
+
+model StockMovement {
+  id             String       @id @default(uuid()) @db.Uuid
+  batchId        String       @map("batch_id") @db.Uuid
+  fromLocationId String?      @map("from_location_id") @db.Uuid
+  toLocationId   String?      @map("to_location_id") @db.Uuid
+  quantity       Int
+  movementType   MovementType @map("movement_type")
+  movementDate   DateTime     @map("movement_date")
+  performedBy    String       @map("performed_by") @db.Uuid
+  remarks        String?      @db.Text
+  batch          Batch        @relation(fields: [batchId], references: [id])
+  fromLocation   Location?    @relation("MovementFromLocation", fields: [fromLocationId], references: [id])
+  toLocation     Location?    @relation("MovementToLocation", fields: [toLocationId], references: [id])
+  user           User         @relation(fields: [performedBy], references: [id])
+
+  @@map("StockMovement")
+}
